@@ -2,6 +2,9 @@
 
 ## TODOList
 
+- 等待并整理完整 `KITTI` 测试结果：
+  - 跑完 `eval_kitti.sh` 的 `lines64/32/16/8/4`
+  - 对照论文 Table 2 逐项核验
 - 继续排查 `sunrgbd` 正常评测结果为何稳定低于论文：
   - 当前 `organized data` 是否与作者发布版本逐文件一致
   - `pretrain/nyu.ckpt` 是否确实对应论文 SUNRGBD 泛化实验所用权重
@@ -138,3 +141,47 @@ SparseDC
 - 已提交一个可跑 SUNRGBD 的版本：
   - commit: `f45c7fd`
   - message: `Enable SUNRGBD evaluation with local organized data`
+
+### KITTI 测试打通
+
+- 继续整理 `KITTI` 数据：
+  - 将 `data/kitti_depth` 指向本地准备好的 `kitti_depth`
+  - 将 `data/kitti_raw` 指向本地准备好的 `kitti_raw`
+  - 将 `data_depth_selection` 调整为项目代码实际期望的目录层级
+- 修正 `configs/data/kitti.yaml`：
+  - `data_folder` 改为 `/home/an/Desktop/SparseDC/data/kitti_depth`
+  - 避免代码继续错误地去找多余的 `kitti_depth/depth`
+- 修正 `src/data/datamodule.py`：
+  - 将 `setup(stage="validate")` 重新纳入 `train/val` 数据初始化
+  - 这是之前为 `SUNRGBD` 做“仅在 test 阶段初始化 test 数据集”改动后带来的副作用
+  - `KITTI` 评测走的是 `trainer.validate()`，如果不补回 `validate`，会因为 `data_val` 为空而报：
+    `TypeError: object of type 'NoneType' has no len()`
+- `pvt_v2_b1.pth` 的加载 mismatch 只是预训练骨干与当前改造结构不完全匹配的提示：
+  - 在 `KITTI` smoke test 中通过 `model.net.backbone_g.pretrained=null` 关闭该预训练加载
+  - 真正评测仍由 `pretrain/kitti.ckpt` 恢复完整模型权重
+
+### KITTI lines64 最小验证
+
+- 运行命令：
+  `CUDA_VISIBLE_DEVICES=0 python eval.py experiment=final_version_kitti_test ckpt_path=pretrain/kitti.ckpt task_name=final_version_kitti_lines64 ++data.args.num_lines=lines64 model.net.backbone_g.pretrained=null`
+- 关键日志：
+  - 配置日志：
+    `/home/an/Desktop/SparseDC/logs/kitti/Uncertainty/eval/final_version_kitti_lines64/2026-03-30_20-58-07/config_tree.log`
+  - 逐样本输出：
+    `/home/an/Desktop/SparseDC/logs/kitti/Uncertainty/eval/final_version_kitti_lines64/2026-03-30_20-58-07/output.csv`
+  - 汇总结果：
+    `/home/an/Desktop/SparseDC/logs/kitti/Uncertainty/eval/final_version_kitti_lines64/2026-03-30_20-58-07/val.csv`
+- 本地结果：
+  - `RMSE = 0.79661`
+  - `MAE = 0.20514`
+- 论文 Table 2 中 `KITTI 64 lines / Ours`：
+  - `RMSE = 0.7966`
+  - `MAE = 0.2051`
+- 结论：
+  - 当前本地 `lines64` 最小验证结果与论文数值一致，可认为已成功复现该设置
+
+### KITTI 可运行版本
+
+- 当前可跑 `KITTI` 的代码结点：
+  - commit: `fe50178`
+  - message: `Fix KITTI eval after prior SUNRGBD datamodule change`
