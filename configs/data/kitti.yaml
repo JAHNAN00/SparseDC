@@ -5,7 +5,7 @@ num_workers: ${num_workers}
 pin_memory: true
 args:
   augment: true
-  data_folder: ${paths.data_dir}/kitti_depth/depth
+  data_folder: ${paths.data_dir}/kitti_depth
   data_folder_rgb: ${paths.data_dir}/kitti_raw
   val: full
   val_h: 352

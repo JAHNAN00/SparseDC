@@ -69,7 +69,7 @@ class DepthDataModule(LightningDataModule):
         This method is called by lightning with both `trainer.fit()` and `trainer.test()`, so be
         careful not to execute things like random split twice!
         """
-        if stage in (None, "fit"):
+        if stage in (None, "fit", "validate"):
             if self.data_train is None:
                 self.data_train = self.Dataset(self.hparams.args, "train")
             if self.data_val is None:
