@@ -25,6 +25,13 @@ class BaseDataset(torch.utils.data.Dataset):
 
 
 class SUNDataset(BaseDataset):
+    @staticmethod
+    def _pick_dir(data_dir, primary, fallback):
+        primary_path = os.path.join(data_dir, primary)
+        if os.path.exists(primary_path):
+            return primary_path
+        return os.path.join(data_dir, fallback)
+
     def __init__(self, args, mode):
         super(SUNDataset, self).__init__()
 
@@ -45,9 +52,11 @@ class SUNDataset(BaseDataset):
         self.augment = args.augment
 
         if self.mode == "train" or self.mode == "val":
-            self.file_name = os.listdir(os.path.join(self.data_dir, "test_depth"))
+            file_dir = self._pick_dir(self.data_dir, "test_depth", "train_depth_gt")
+            self.file_name = os.listdir(file_dir)
         else:
-            self.file_name = os.listdir(os.path.join(self.data_dir, "test_depth"))
+            file_dir = self._pick_dir(self.data_dir, "test_depth", "test_depth_gt")
+            self.file_name = os.listdir(file_dir)
 
         self.file_name.sort()
 
@@ -69,15 +78,16 @@ class SUNDataset(BaseDataset):
         rgb_filename = "img-{:06d}.jpg".format(int(self.file_name[idx][:-4]))
         if self.mode == "train" or self.mode == "val":
             rgb_path = os.path.join(self.data_dir, "train_images", rgb_filename)
-            depth_path = os.path.join(self.data_dir, "train_depth", self.file_name[idx])
+            depth_dir = self._pick_dir(self.data_dir, "train_depth", "train_depth_gt")
+            depth_path = os.path.join(depth_dir, self.file_name[idx])
+            input_dir = self._pick_dir(self.data_dir, "train_depth_input", "train_depth_gt")
+            input_path = os.path.join(input_dir, self.file_name[idx])
         else:
             rgb_path = os.path.join(self.data_dir, "test_images", rgb_filename)
-            depth_path = os.path.join(
-                self.data_dir, "test_depth_gt", self.file_name[idx]
-            )
-            input_path = os.path.join(
-                self.data_dir, "test_depth_input", self.file_name[idx]
-            )
+            depth_dir = self._pick_dir(self.data_dir, "test_depth_gt", "test_depth")
+            input_dir = self._pick_dir(self.data_dir, "test_depth_input", "test_depth")
+            depth_path = os.path.join(depth_dir, self.file_name[idx])
+            input_path = os.path.join(input_dir, self.file_name[idx])
         rgb = Image.open(rgb_path).convert("RGB")
         dep = Image.open(depth_path)
         dep_sp = Image.open(input_path)

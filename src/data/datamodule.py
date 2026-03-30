@@ -69,11 +69,15 @@ class DepthDataModule(LightningDataModule):
         This method is called by lightning with both `trainer.fit()` and `trainer.test()`, so be
         careful not to execute things like random split twice!
         """
-        # load and split datasets only if not loaded already
-        if not self.data_train and not self.data_val and not self.data_test:
-            self.data_train = self.Dataset(self.hparams.args, "train")
-            self.data_val = self.Dataset(self.hparams.args, "val")
-            self.data_test = self.Dataset(self.hparams.args, "test")
+        if stage in (None, "fit"):
+            if self.data_train is None:
+                self.data_train = self.Dataset(self.hparams.args, "train")
+            if self.data_val is None:
+                self.data_val = self.Dataset(self.hparams.args, "val")
+
+        if stage in (None, "test"):
+            if self.data_test is None:
+                self.data_test = self.Dataset(self.hparams.args, "test")
 
     def train_dataloader(self):
         return DataLoader(
