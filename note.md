@@ -2,9 +2,6 @@
 
 ## TODOList
 
-- 继续补全 `KITTI raw` 训练所需压缩包：
-  - 根据 `data/kitti_archives_needed_but_not_in_manifest.txt` 继续下载缺失 drive
-  - 下载完成后继续验证 `KITTI` 训练是否还会因缺失 RGB 报错
 - 补充当前机器上的训练/验证耗时基线：
   - `NYU` 训练：待补
   - `NYU` 验证：待补
@@ -14,8 +11,8 @@
   - `pretrain/nyu.ckpt` 是否确实对应论文 SUNRGBD 泛化实验所用权重
   - 是否还存在未对齐的评测前处理细节
 - 后续处理 `nyuv2`：
-  - 检查 `/media/an/4T/datasets/nyudepthv2` 中原始 `.mat` 数据的实际结构
-  - 判断如何转换为项目期望的 `h5 + nyu.json` 格式
+  - 继续寻找作者 README 对应的 `sparse-to-dense` 预处理 NYUv2 数据
+  - 补齐官方 `val/official` 与可直接使用的默认 `nyu.json` 所需 `.h5`
 
 ## 当前项目文件夹结构
 
@@ -247,7 +244,42 @@ SparseDC
   - 缺失项几乎都集中在 `2011_09_28`
 - 当前进展：
   - 已确认并补解压 `2011_09_28_drive_0146_sync.zip`
-  - 当前正在继续补下载其余缺失的 raw 压缩包
-- 后续：
-  - 待缺失包下载完成后，重新尝试 `KITTI` 训练
-  - 若仍报 `file not found`，继续按路径补查缺失 drive
+  - 缺失的 raw 压缩包现已全部下载并解压完成
+  - 按 `src/data/kitti.py` 训练时的真实路径规则复核后：
+    - `data_depth_annotated/train`: `85898` 张
+    - `data_depth_annotated/val`: `6852` 张
+    - `data_depth_velodyne/train`: `85898` 张
+    - `data_depth_velodyne/val`: `6852` 张
+    - 训练/验证实际需要的 raw drive 共 `151` 个
+    - 缺失 RGB 文件数：`0`
+    - 缺失 drive 数：`0`
+- 结论：
+  - 当前 `KITTI` 数据问题已经解决，已满足这份代码的训练与评测数据要求
+  - 当前主要瓶颈已从“缺失数据”转为“单卡显存限制下只能使用 `FP16 + batch_size=1`，训练耗时较长”
+
+### NYUv2 `.mat` 提取排查
+
+- 已确认 `/media/an/4T/datasets/nyudepthv2/nyu_depth_v2_labeled.mat` 可以被 `h5py` 正常读取。
+- 其中包含的关键字段如：
+  - `images`
+  - `depths`
+  - `rawRgbFilenames`
+  - `scenes`
+- 已编写并验证一个外部脚本：
+  - `/media/an/4T/datasets/nyudepthv2/extract_nyuv2_from_mat.py`
+  - 能将 `labeled.mat` 提取为项目可读的 `.h5` 样本，并生成 sidecar manifest
+- 本地已完成 smoke test：
+  - 从提取结果中切出 `50` 个样本作为临时 `val/test`
+  - 评测命令可跑通，说明 `.mat -> .h5 -> loader -> eval` 链路本身没有问题
+- 但需要明确：
+  - `labeled.mat` 总共只有 `1449` 帧
+  - 这不能替代作者 README 中使用的 `sparse-to-dense` 预处理 NYUv2 数据
+  - 当前目录中的默认 `nyu.json` 对应的是更大规模的 `.h5` 数据集，而不是这份 `labeled.mat`
+  - 因此直接使用默认 `nyu.json` 会因为大量 `.h5` 不存在而报错
+- 这次 `smoke50` 结果不能与论文做严格复现对比：
+  - 当前使用的是从 `train` 中临时切出的 `50` 个样本
+  - 不是真正的官方 NYU test split
+  - 只能用于验证流程是否跑通，不能用于判断是否复现论文 NYU 主结果
+- 当前决定：
+  - 将 `src/data/nyu.py` 恢复为作者原始逻辑，只读取默认 `nyu.json`
+  - 等后续补到 README 对应的 NYUv2 预处理数据后，再继续正式 NYU 训练与评测
