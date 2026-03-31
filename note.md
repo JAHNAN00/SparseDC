@@ -2,9 +2,13 @@
 
 ## TODOList
 
-- 等待并整理完整 `KITTI` 测试结果：
-  - 跑完 `eval_kitti.sh` 的 `lines64/32/16/8/4`
-  - 对照论文 Table 2 逐项核验
+- 继续补全 `KITTI raw` 训练所需压缩包：
+  - 根据 `data/kitti_archives_needed_but_not_in_manifest.txt` 继续下载缺失 drive
+  - 下载完成后继续验证 `KITTI` 训练是否还会因缺失 RGB 报错
+- 补充当前机器上的训练/验证耗时基线：
+  - `NYU` 训练：待补
+  - `NYU` 验证：待补
+  - `KITTI` 训练：待补
 - 继续排查 `sunrgbd` 正常评测结果为何稳定低于论文：
   - 当前 `organized data` 是否与作者发布版本逐文件一致
   - `pretrain/nyu.ckpt` 是否确实对应论文 SUNRGBD 泛化实验所用权重
@@ -185,3 +189,65 @@ SparseDC
 - 当前可跑 `KITTI` 的代码结点：
   - commit: `fe50178`
   - message: `Fix KITTI eval after prior SUNRGBD datamodule change`
+
+## 2026-03-31
+
+### 当前机器上的大致耗时
+
+- 统计口径：
+  - 以日志目录时间戳作为启动时间
+  - 以对应 `val.csv` 的落盘时间作为结束时间
+  - 仅作为当前机器配置上的粗略墙钟时间参考
+- `SUNRGBD` 正常验证：
+  - `2026-03-30_17-30-09 -> 17:48:38`，约 `18 分 29 秒`
+  - `2026-03-30_18-03-15 -> 18:19:50`，约 `16 分 36 秒`
+  - 可粗略记为：`单次验证约 17~19 分钟`
+- `KITTI` 完整验证：
+  - `lines64`：`21:13:03 -> 21:18:06`，约 `5 分 04 秒`
+  - `lines32`：`21:18:09 -> 21:23:21`，约 `5 分 13 秒`
+  - `lines16`：`21:23:25 -> 21:28:19`，约 `4 分 55 秒`
+  - `lines8`：`21:28:22 -> 21:33:13`，约 `4 分 51 秒`
+  - `lines4`：`21:33:16 -> 21:38:08`，约 `4 分 53 秒`
+  - 跑完 `eval_kitti.sh` 的 5 组设置总耗时约 `25 分钟`
+- 预留占位：
+  - `NYU` 训练：待补
+  - `NYU` 验证：待补
+  - `KITTI` 训练：待补
+
+### KITTI 训练显存观察
+
+- 当前机器上的 `KITTI` 训练尝试：
+  - 默认 `FP32`、`batch_size=2` 会直接 OOM
+  - 将 `batch_size` 降到 `1` 后，`FP32` 仍然 OOM
+  - 典型报错显示：
+    - GPU 总显存约 `10.57 GiB`
+    - OOM 时 PyTorch 已分配约 `8.5~8.7 GiB`
+    - 仅剩几十 MiB 可用显存
+- 一个重要结论：
+  - 在当前这张约 `11GB` 显存的卡上，`KITTI` 训练默认配置需要 `FP16` 才能把训练流程跑起来
+  - 使用 `+trainer.precision=16` 后，训练可以启动
+  - 但训练数据仍未补全，因此后续仍会因缺失 `kitti_raw` 中的部分 drive 而中断
+- 对 `FP32` 训练显存需求的粗略估计：
+  - 当前 `10.57 GiB` 显存下，`batch_size=1` 仍然不够
+  - 结合 `FP16` 可启动、`FP32` 必炸这一现象，保守估计单卡 `FP32` 训练至少需要 `14~16 GiB`
+  - 如果希望更稳，避免碎片与波动带来的边缘 OOM，`16GB+` 更合适
+  - 因此 `RTX 4090 24GB` 从显存角度看应当足够支撑当前配置下的单卡训练
+
+### KITTI raw 缺失包补下载
+
+- 训练阶段报错定位到 `kitti_raw` 不完整，而不是 `kitti_depth` 本身有问题。
+- 之前手头的下载清单 `data/kitti_archives_to_download.txt` 只覆盖了评测和部分 raw drive，不足以支撑完整训练。
+- 已根据代码实际训练路径重新计算：
+  - 以 `data_depth_annotated/train/*_sync` 与 `val/*_sync` 为准
+  - 对照原始下载清单，生成新的补下载列表：
+    `data/kitti_archives_needed_but_not_in_manifest.txt`
+- 统计结果：
+  - 当前代码训练/验证实际需要的 raw drive 并集共 `151` 个
+  - 原始清单缺少其中 `89` 个 zip
+  - 缺失项几乎都集中在 `2011_09_28`
+- 当前进展：
+  - 已确认并补解压 `2011_09_28_drive_0146_sync.zip`
+  - 当前正在继续补下载其余缺失的 raw 压缩包
+- 后续：
+  - 待缺失包下载完成后，重新尝试 `KITTI` 训练
+  - 若仍报 `file not found`，继续按路径补查缺失 drive
