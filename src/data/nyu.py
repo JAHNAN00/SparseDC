@@ -56,7 +56,8 @@ class NYUDataset(BaseDataset):
             ]
         )
 
-        with open(os.path.join(args.data_dir, "nyu.json")) as json_file:
+        split_json = getattr(args, "split_json", "nyu.json")
+        with open(os.path.join(args.data_dir, split_json)) as json_file:
             json_data = json.load(json_file)
             self.sample_list = json_data[mode]
 
@@ -64,11 +65,20 @@ class NYUDataset(BaseDataset):
         return len(self.sample_list)
 
     def __getitem__(self, idx):
-        path_file = os.path.join(self.data_dir, self.sample_list[idx]["filename"])
-
-        f = h5py.File(path_file, "r")
-        rgb_h5 = f["rgb"][:].transpose(1, 2, 0)
-        dep_h5 = f["depth"][:]
+        sample = self.sample_list[idx]
+        if "filename" in sample:
+            path_file = os.path.join(self.data_dir, sample["filename"])
+            f = h5py.File(path_file, "r")
+            rgb_h5 = f["rgb"][:].transpose(1, 2, 0)
+            dep_h5 = f["depth"][:]
+            f.close()
+        else:
+            rgb_path = os.path.join(self.data_dir, sample["rgb"])
+            dep_path = os.path.join(self.data_dir, sample["depth"])
+            rgb_h5 = np.array(Image.open(rgb_path).convert("RGB"), dtype=np.uint8)
+            dep_h5 = cv2.imread(dep_path, cv2.IMREAD_UNCHANGED).astype(np.float32)
+            dep_h5 /= (2**16 - 1)
+            dep_h5 *= 10.0
 
         rgb = Image.fromarray(rgb_h5, mode="RGB")
         dep = Image.fromarray(dep_h5.astype("float32"), mode="F")

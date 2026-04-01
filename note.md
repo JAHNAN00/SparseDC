@@ -11,8 +11,8 @@
   - `pretrain/nyu.ckpt` 是否确实对应论文 SUNRGBD 泛化实验所用权重
   - 是否还存在未对齐的评测前处理细节
 - 后续处理 `nyuv2`：
-  - 继续寻找作者 README 对应的 `sparse-to-dense` 预处理 NYUv2 数据
-  - 补齐官方 `val/official` 与可直接使用的默认 `nyu.json` 所需 `.h5`
+  - 继续确认当前 `PNG official` 数据与作者原始 `.h5 official` 是否完全等价
+  - 若后续需要训练，再评估是否还要补齐 README 中提到的 `sparse-to-dense` 预处理版本
 
 ## 当前项目文件夹结构
 
@@ -283,3 +283,54 @@ SparseDC
 - 当前决定：
   - 将 `src/data/nyu.py` 恢复为作者原始逻辑，只读取默认 `nyu.json`
   - 等后续补到 README 对应的 NYUv2 预处理数据后，再继续正式 NYU 训练与评测
+
+### NYUv2 PNG 官方数据接入与 500P 复现
+
+- 后续补充到一份新的 `NYUv2` 数据：
+  - `train/<scene>/rgb_*.png`
+  - `train/<scene>/depth_*.png`
+  - `val/official/rgb_*.png`
+  - `val/official/depth_*.png`
+- 基于当前真实文件生成了新的清单：
+  - `/media/an/4T/datasets/nyudepthv2/nyu_png_pairs.json`
+  - 统计结果：
+    - `train`: `47584` 对 `rgb/depth`
+    - `val`: `654` 对
+    - `test`: `654` 对
+- 对 `src/data/nyu.py` 做了最小兼容改动：
+  - 继续兼容原来的 `.h5 + filename`
+  - 新增对 `nyu_png_pairs.json` 这种 `rgb/depth` PNG 对记录的读取支持
+- 这次排查里，深度映射关系是关键：
+  - 先前按 `/10000.0` 读取 `depth_*.png` 时，评测结果会出现 `RMSE/MAE` 明显优于论文、但 `REL` 仅略接近的异常现象
+  - 后根据 Kaggle 数据提供方给出的方式改为：
+    - `depth = cv2.imread(path, cv2.IMREAD_UNCHANGED).astype('float32')`
+    - `depth /= (2**16 - 1)`
+    - `depth *= 10.0`
+  - 当前 `nyu.py` 已按这个公式读取 PNG 深度
+- 对深度映射做了额外核验：
+  - 将 `train` 中的 PNG 样本与 `train_from_mat` 中的 `.h5` 样本按场景和 RGB 相似度做粗配对
+  - 新映射下，PNG depth 与 `.h5` depth 的量级能够稳定对齐
+  - 例如：
+    - `bathroom_0001/00001.h5`: `png_mean = 1.7025`, `h5_mean = 1.6991`, `median_ratio = 0.9987`
+    - `bathroom_0002/00001.h5`: `png_mean = 1.8035`, `h5_mean = 1.7978`, `median_ratio = 0.9997`
+    - `bathroom_0002/00002.h5`: `png_mean = 1.4878`, `h5_mean = 1.4883`, `median_ratio = 1.0000`
+  - 这说明当前 PNG 深度映射在数值尺度上基本正确
+- 在 `500 P` 设置下重新评测：
+  - 评测命令使用：
+    - `data.args.split_json=nyu_png_pairs.json`
+    - `num_sample=500`
+    - `ckpt_path=pretrain/nyu.ckpt`
+  - 最终日志：
+    - `/home/an/Desktop/SparseDC/logs/nyu/Uncertainty/eval/nyu_png_official_v2/2026-04-01_17-13-31/val.csv`
+  - 本地结果：
+    - `RMSE = 0.1038 ± 0.0005`
+    - `MAE = 0.0399 ± 0.0001`
+    - `REL = 0.0135 ± 0.0001`
+  - 论文 Table 1 中 `500 P / Ours`：
+    - `RMSE = 0.0976`
+    - `MAE = 0.0379`
+    - `REL = 0.0128`
+- 当前判断：
+  - 这套 `PNG official` 数据已经足以说明当前 `NYUv2` 数据集是有效的
+  - 在 `500P` 设置下已经达到“基本复现论文结果”的程度
+  - 与论文相比仍有轻微差距，但不再像之前那样表现出明显的深度缩放错误
