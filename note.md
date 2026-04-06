@@ -2,17 +2,20 @@
 
 ## TODOList
 
-- 补充当前机器上的训练/验证耗时基线：
-  - `NYU` 训练：待补
-  - `NYU` 验证：待补
-  - `KITTI` 训练：待补
-- 继续排查 `sunrgbd` 正常评测结果为何稳定低于论文：
-  - 当前 `organized data` 是否与作者发布版本逐文件一致
-  - `pretrain/nyu.ckpt` 是否确实对应论文 SUNRGBD 泛化实验所用权重
-  - 是否还存在未对齐的评测前处理细节
-- 后续处理 `nyuv2`：
-  - 继续确认当前 `PNG official` 数据与作者原始 `.h5 official` 是否完全等价
-  - 若后续需要训练，再评估是否还要补齐 README 中提到的 `sparse-to-dense` 预处理版本
+- 系统梳理 `SparseDC` 代码结构：
+  - `src/data`
+  - `src/models/backbones`
+  - `src/models/decodes`
+  - `src/models/refiners`
+  - `src/models/model.py`
+- 基于当前可复现实验，分析还能提升 `NYU/KITTI` 的关键因素：
+  - 数据协议差异
+  - 训练策略
+  - 模块替换空间
+- 继续排查 `SUNRGBD` 与论文的差距：
+  - 数据版本是否完全一致
+  - `nyu.ckpt` 是否对应论文泛化实验
+  - 是否存在未对齐的前处理细节
 
 ## 当前项目文件夹结构
 
@@ -207,8 +210,6 @@ SparseDC
   - `lines4`：`21:33:16 -> 21:38:08`，约 `4 分 53 秒`
   - 跑完 `eval_kitti.sh` 的 5 组设置总耗时约 `25 分钟`
 - 预留占位：
-  - `NYU` 训练：待补
-  - `NYU` 验证：待补
   - `KITTI` 训练：待补
 
 ### KITTI 训练显存观察
@@ -280,9 +281,9 @@ SparseDC
   - 当前使用的是从 `train` 中临时切出的 `50` 个样本
   - 不是真正的官方 NYU test split
   - 只能用于验证流程是否跑通，不能用于判断是否复现论文 NYU 主结果
-- 当前决定：
-  - 将 `src/data/nyu.py` 恢复为作者原始逻辑，只读取默认 `nyu.json`
-  - 等后续补到 README 对应的 NYUv2 预处理数据后，再继续正式 NYU 训练与评测
+- 这部分最终没有作为正式实验数据继续使用，保留它主要是为了记录：
+  - `.mat` 到 `.h5` 的转换链路是通的
+  - 但 `labeled.mat` 不能替代作者 README 所用的完整 NYU 预处理集
 
 ### NYUv2 PNG 官方数据接入与 500P 复现
 
@@ -291,6 +292,8 @@ SparseDC
   - `train/<scene>/depth_*.png`
   - `val/official/rgb_*.png`
   - `val/official/depth_*.png`
+- 当前使用的 `PNG official` 数据来源：
+  - `https://www.kaggle.com/datasets/awsaf49/nyuv2-official-split-dataset`
 - 基于当前真实文件生成了新的清单：
   - `/media/an/4T/datasets/nyudepthv2/nyu_png_pairs.json`
   - 统计结果：
@@ -334,3 +337,52 @@ SparseDC
   - 这套 `PNG official` 数据已经足以说明当前 `NYUv2` 数据集是有效的
   - 在 `500P` 设置下已经达到“基本复现论文结果”的程度
   - 与论文相比仍有轻微差距，但不再像之前那样表现出明显的深度缩放错误
+
+### NYUv2 训练结果
+
+- 训练配置：
+  - `FP32`
+  - `batch_size=2`
+  - `data.args.split_json=nyu_png_pairs.json`
+  - `trainer.max_epochs=100`
+- 主训练日志：
+  - `/home/an/Desktop/SparseDC/logs/nyu/Uncertainty/train/resnet18_pvt_v2_b1_final_version/2026-04-01_21-59-28/val.csv`
+- 当前 best checkpoint：
+  - `/home/an/Desktop/SparseDC/logs/nyu/Uncertainty/train/resnet18_pvt_v2_b1_final_version/2026-04-01_21-59-28/checkpoints/epoch_039.ckpt`
+- 当前最佳验证结果（`epoch 39`）：
+  - `RMSE = 0.10323`
+  - `MAE = 0.03891`
+  - `REL = 0.01332`
+- 对比作者权重在同一套 `PNG official` 数据上的评测：
+  - 作者权重：
+    - `RMSE = 0.1038 ± 0.0005`
+    - `MAE = 0.0399 ± 0.0001`
+    - `REL = 0.0135 ± 0.0001`
+  - 当前自训练 best：
+    - `RMSE = 0.10323`
+    - `MAE = 0.03891`
+    - `REL = 0.01332`
+- 结论：
+  - 当前自训练模型已经基本追平作者权重在这套数据上的表现
+  - 说明训练流程有效，数据协议也基本可信
+  - 与论文主表相比仍有轻微差距，但更像数据/协议差异，而不是训练失效
+
+## 当前结论
+
+- `KITTI`：
+  - 数据已完整可用
+  - 官方权重在当前环境下可几乎精确复现论文结果
+- `NYUv2`：
+  - 当前 `PNG official` 数据可用
+  - `500P` 设置下，作者权重与自训练结果都已接近论文
+  - 深度 PNG 的正确映射方式已确认
+- `SUNRGBD`：
+  - 当前仍未复现论文，后续如果继续做复现排查，重点应放在数据版本和评测协议上
+
+## 下一阶段
+
+- 当前实验复现已基本完成。
+- 接下来更值得投入的方向是：
+  - 系统学习代码结构
+  - 理清各模块在训练与推理中的作用
+  - 基于当前已验证的数据协议和基线结果，尝试做更有效的模型改进
