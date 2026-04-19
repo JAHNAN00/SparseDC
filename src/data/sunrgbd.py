@@ -1,11 +1,12 @@
-import torch
-
-from torchvision.transforms import transforms as T
-import numpy as np
 import os
+import random
+
+import numpy as np
+import torch
+import torch.nn.functional as F
 import torchvision.transforms.functional as TF
 from PIL import Image
-import torch.nn.functional as F
+from torchvision.transforms import transforms as T
 
 class BaseDataset(torch.utils.data.Dataset):
     def __init__(self):
@@ -52,18 +53,16 @@ class SUNDataset(BaseDataset):
         self.augment = args.augment
 
         if self.mode == "train" or self.mode == "val":
-            file_dir = self._pick_dir(self.data_dir, "test_depth", "train_depth_gt")
+            file_dir = self._pick_dir(self.data_dir, "train_depth", "train_depth_gt")
             self.file_name = os.listdir(file_dir)
         else:
-            file_dir = self._pick_dir(self.data_dir, "test_depth", "test_depth_gt")
+            file_dir = self._pick_dir(self.data_dir, "test_depth_gt", "test_depth")
             self.file_name = os.listdir(file_dir)
 
         self.file_name.sort()
 
         if self.mode == "train" or self.mode == "val":
             num = len(self.file_name) - int(len(self.file_name) * self.radio)
-            import random
-
             random.seed(0)
             random.shuffle(self.file_name)
             if self.mode == "train":
@@ -93,17 +92,17 @@ class SUNDataset(BaseDataset):
         dep_sp = Image.open(input_path)
 
         if self.augment and self.mode == "train":
-            _scale = np.random.uniform(1.0, 1.5)
-            scale = np.int(self.height * _scale)
             degree = np.random.uniform(-5.0, 5.0)
             flip = np.random.uniform(0.0, 1.0)
 
             if flip > 0.5:
                 rgb = TF.hflip(rgb)
                 dep = TF.hflip(dep)
+                dep_sp = TF.hflip(dep_sp)
 
             rgb = TF.rotate(rgb, angle=degree, resample=Image.NEAREST)
             dep = TF.rotate(dep, angle=degree, resample=Image.NEAREST)
+            dep_sp = TF.rotate(dep_sp, angle=degree, resample=Image.NEAREST)
 
             t_rgb = T.Compose(
                 [
@@ -125,9 +124,8 @@ class SUNDataset(BaseDataset):
             )
 
             rgb = t_rgb(rgb)
-            dep = t_dep(dep)
-
-            dep = dep / _scale
+            dep = t_dep(dep) / 10000.0
+            dep_sp = t_dep(dep_sp) / 10000.0
 
         else:
             t_rgb = T.Compose(
