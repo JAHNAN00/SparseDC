@@ -108,6 +108,63 @@ SparseDC
   - 作者公开的 `organized data` / `nyu.ckpt` 与论文实验资源之间可能存在未说明差异
   - 或评测流水线中仍有未对齐的细节
 
+### SUNRGBD 直接训练实验
+
+- 实验目的：
+  - 不再走论文的 `NYU -> SUNRGBD` 泛化设定
+  - 直接在 `SUNRGBD` 上训练，再在 `SUNRGBD` 上测试
+  - 先判断当前代码和数据在同域设定下能否得到稳定且合理的结果
+- 代码改动：
+  - 修复 `src/data/sunrgbd.py` 中训练增强分支未生成 `dep_sp` 的问题
+  - 让 `rgb`、`gt`、`depth input` 在训练增强时保持一致的翻转与旋转
+  - 修正 `SUNRGBD` 训练/验证/测试目录选择逻辑
+  - 新增 `configs/experiment/final_version_sunrgbd.yaml`
+- 资源与参数：
+  - GPU: `RTX 2080 Ti 11GB`
+  - 稳定训练配置：
+    - `trainer=gpu`
+    - `trainer.devices=1`
+    - `+trainer.precision=16`
+    - `batch_size=4`
+    - `data.num_workers=4`
+  - 显存试探结论：
+    - `batch_size=8` 会 OOM
+    - `batch_size=4 + AMP` 稳定
+- 训练命令：
+  - 第 1 段训练：
+    `python train.py experiment=final_version_sunrgbd trainer=gpu trainer.devices=1 ++trainer.precision=16 batch_size=4 data.num_workers=4 trainer.max_epochs=10 test=False task_name=sunrgbd_train10`
+  - 第 2 段续训：
+    `python train.py experiment=final_version_sunrgbd trainer=gpu trainer.devices=1 ++trainer.precision=16 batch_size=4 data.num_workers=4 trainer.max_epochs=20 test=False ckpt_path="/home/an/Desktop/SparseDC/logs/sunrgbd/Uncertainty/train/sunrgbd_train10/2026-04-20_00-03-05/checkpoints/last.ckpt" task_name=sunrgbd_train20`
+- 训练结果：
+  - `train10` 最优验证结果：
+    - `RMSE = 0.17146` at epoch `8`
+  - `train20` 最优验证结果：
+    - `RMSE = 0.16199` at epoch `18`
+  - 最佳 checkpoint：
+    `/home/an/Desktop/SparseDC/logs/sunrgbd/Uncertainty/train/sunrgbd_train20/2026-04-20_01-31-05/checkpoints/epoch_018.ckpt`
+- 测试命令：
+  - `python eval.py experiment=final_version_sunrgbd data=sunrgbd ckpt_path="/home/an/Desktop/SparseDC/logs/sunrgbd/Uncertainty/train/sunrgbd_train20/2026-04-20_01-31-05/checkpoints/epoch_018.ckpt" trainer=gpu trainer.devices=1 task_name=sunrgbd_eval_from_sunrgbd_train20`
+- 测试结果：
+  - 结果文件：
+    `/home/an/Desktop/SparseDC/logs/sunrgbd/Uncertainty/eval/sunrgbd_eval_from_sunrgbd_train20/2026-04-20_03-00-05/val.csv`
+  - `RMSE = 0.10041`
+  - `MAE = 0.02701`
+  - `iRMSE = 0.43170`
+  - `iMAE = 0.02782`
+  - `REL = 0.02293`
+  - `D^1 = 0.98386`
+  - `D^2 = 0.99177`
+  - `D^3 = 0.99558`
+- 对比结论：
+  - 论文 Table 3 的 `SUNRGBD / Ours` 为：
+    - `RMSE = 0.1930`
+    - `REL = 0.0710`
+  - 本次 `SUNRGBD -> SUNRGBD` 结果明显优于论文数值
+  - 但两者不是同一协议，不能直接据此认定“超过论文正式结果”
+  - 更准确地说：
+    - `NYU -> SUNRGBD` 这条论文公开设定，在当前环境下仍未复现到论文值
+    - `SUNRGBD -> SUNRGBD` 这条同域训练设定已经被打通，且结果很好
+
 ### 交换 `input/gt` 实验
 
 - 做过一组额外实验：在 SUNRGBD 测试阶段交换 `input` 与 `gt`
@@ -287,13 +344,11 @@ SparseDC
 
 ### NYUv2 PNG 官方数据接入与 500P 复现
 
-- 后续补充到一份新的 `NYUv2` 数据：
+- 后续从kaggle上https://www.kaggle.com/datasets/awsaf49/nyuv2-official-split-dataset补充到一份新的 `NYUv2` 数据：
   - `train/<scene>/rgb_*.png`
   - `train/<scene>/depth_*.png`
   - `val/official/rgb_*.png`
   - `val/official/depth_*.png`
-- 当前使用的 `PNG official` 数据来源：
-  - `https://www.kaggle.com/datasets/awsaf49/nyuv2-official-split-dataset`
 - 基于当前真实文件生成了新的清单：
   - `/media/an/4T/datasets/nyudepthv2/nyu_png_pairs.json`
   - 统计结果：
