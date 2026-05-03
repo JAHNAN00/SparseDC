@@ -6,6 +6,6 @@ pin_memory: true
 args:
   augment: true
   data_dir: ${paths.data_dir}/nyudepthv2
-  split_json: nyu.json
+  split_json: nyu_png_pairs.json
   num_sample: ${num_sample}
   is_sparse: ${is_sparse}
